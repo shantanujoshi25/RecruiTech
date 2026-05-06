@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { graphqlRequest } from "../../utils/graphql";
@@ -20,9 +20,18 @@ import {
 	Building2,
 	Send,
 	Clock,
+	Video,
 } from "lucide-react";
 import RejectionFeedbackModal from "./RejectionFeedbackModal";
 import "./CandidateHome.css";
+
+/** Job listing is shown only if apply is still allowed (matches backend apply check). */
+const isJobDeadlineOpen = (job) => {
+	if (!job?.deadline) return true;
+	const t = new Date(job.deadline).getTime();
+	if (Number.isNaN(t)) return true;
+	return t >= Date.now();
+};
 
 const CandidateHome = () => {
 	const { user, loading: authLoading, token } = useAuth();
@@ -63,6 +72,7 @@ const CandidateHome = () => {
 	const [applicationCount, setApplicationCount] = useState(0);
 	const [recentApplications, setRecentApplications] = useState([]);
 	const [recentJobs, setRecentJobs] = useState([]);
+	const [myInterviews, setMyInterviews] = useState([]);
 	const [feedbackModal, setFeedbackModal] = useState({ open: false, data: null, jobTitle: "" });
 	const [feedbackLoading, setFeedbackLoading] = useState(false);
 
@@ -117,7 +127,7 @@ const CandidateHome = () => {
 								location
 							}
 						}
-						searchJobs(limit: 10) {
+						searchJobs(limit: 40) {
 							jobs {
 								id
 								title
@@ -127,7 +137,19 @@ const CandidateHome = () => {
 								location_type
 								employment_type
 								skills
+								deadline
 							}
+						}
+						myInterviews {
+							id
+							application_id
+							job_id
+							interview_token
+							status
+							job_title
+							overall_score
+							results_released
+							expires_at
 						}
 					}
 					`,
@@ -139,10 +161,14 @@ const CandidateHome = () => {
 				const apps = data.myApplications || [];
 				setRecentApplications(apps.slice(0, 5));
 				const appliedJobIds = new Set(apps.map((a) => a.job_id));
-				const latestOpenings = (data.searchJobs?.jobs || []).filter(
-					(job) => !appliedJobIds.has(job.id)
-				);
+				const latestOpenings = (data.searchJobs?.jobs || [])
+					.filter(
+						(job) =>
+							!appliedJobIds.has(job.id) && isJobDeadlineOpen(job)
+					)
+					.slice(0, 10);
 				setRecentJobs(latestOpenings);
+				setMyInterviews(data.myInterviews || []);
 				setLoading(false);
 			} catch (err) {
 				console.error("Fetch profile error:", err);
@@ -155,6 +181,14 @@ const CandidateHome = () => {
 			fetchProfile();
 		}
 	}, [user, authLoading, navigate, token]);
+
+	const interviewByApplicationId = useMemo(() => {
+		const m = {};
+		for (const iv of myInterviews) {
+			if (iv?.application_id) m[iv.application_id] = iv;
+		}
+		return m;
+	}, [myInterviews]);
 
 	if (authLoading || loading) {
 		return (
@@ -547,7 +581,16 @@ const CandidateHome = () => {
 													<p>{app.job?.company_name || "Company"} &bull; {app.job?.location || ""}</p>
 												</div>
 											</div>
-											<div className="job-tags">
+											<div
+												className="job-tags"
+												style={{
+													display: "flex",
+													flexWrap: "wrap",
+													alignItems: "center",
+													gap: "0.5rem",
+													width: "100%",
+												}}
+											>
 												<span className="tag" style={{
 													background: app.status === "shortlisted"
 														? "rgba(16, 185, 129, 0.15)"
@@ -565,16 +608,64 @@ const CandidateHome = () => {
 												<span className="tag">
 													Applied {new Date(app.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
 												</span>
-												{app.status === "rejected" && (
-													<button
-														className="btn btn-outline btn-sm"
-														style={{ marginLeft: "auto", gap: "0.4rem", fontSize: "0.8rem", padding: "0.3rem 0.75rem" }}
-														onClick={() => handleViewFeedback(app)}
-														disabled={feedbackLoading}
+												{(interviewByApplicationId[app.id] || app.status === "rejected") && (
+													<div
+														style={{
+															marginLeft: "auto",
+															display: "flex",
+															gap: "0.5rem",
+															alignItems: "center",
+															flexWrap: "wrap",
+														}}
 													>
-														<TrendingUp size={14} />
-														{feedbackLoading ? "Loading..." : "View Feedback"}
-													</button>
+														{(() => {
+															const iv = interviewByApplicationId[app.id];
+															if (!iv || iv.status === "cancelled" || iv.status === "expired")
+																return null;
+															if (iv.status === "scheduled" || iv.status === "in_progress") {
+																return (
+																	<button
+																		type="button"
+																		className="btn btn-primary btn-sm"
+																		style={{ gap: "0.35rem", fontSize: "0.8rem", padding: "0.35rem 0.85rem" }}
+																		onClick={() => navigate(`/interview/${iv.interview_token}`)}
+																	>
+																		<Video size={14} />
+																		{iv.status === "in_progress" ? "Resume AI interview" : "Take AI interview"}
+																	</button>
+																);
+															}
+															if (iv.status === "completed") {
+																return (
+																	<span
+																		className="tag"
+																		style={{
+																			background: "rgba(139, 92, 246, 0.15)",
+																			color: "#a78bfa",
+																			fontSize: "0.8rem",
+																		}}
+																		title={iv.results_released ? "Score released" : "Awaiting detailed results"}
+																	>
+																		AI interview complete
+																		{iv.results_released &&
+																			` (${Math.round(iv.overall_score ?? 0)}/100)`}
+																	</span>
+																);
+															}
+															return null;
+														})()}
+														{app.status === "rejected" && (
+															<button
+																className="btn btn-outline btn-sm"
+																style={{ gap: "0.4rem", fontSize: "0.8rem", padding: "0.3rem 0.75rem" }}
+																onClick={() => handleViewFeedback(app)}
+																disabled={feedbackLoading}
+															>
+																<TrendingUp size={14} />
+																{feedbackLoading ? "Loading..." : "View Feedback"}
+															</button>
+														)}
+													</div>
 												)}
 											</div>
 										</div>
