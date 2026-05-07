@@ -171,7 +171,10 @@ const registerInterviewHandlers = (io, socket) => {
 	socket.on("audio-chunk", async (data) => {
 		try {
 			const audioBuffer = Buffer.isBuffer(data) ? data : Buffer.from(data);
-			if (audioBuffer.length < 1000) return;
+			// A 4s opus/webm chunk with real speech is typically >12 KB. Anything
+			// smaller is almost certainly silence and will only trigger Whisper
+			// hallucinations ("Subscribe to my channel", "Thank you", etc.).
+			if (audioBuffer.length < 8000) return;
 
 			const text = await transcribeAudio(audioBuffer);
 			if (text) {
