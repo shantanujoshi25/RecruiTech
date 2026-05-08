@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useMemo } from "react";
+import { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { graphqlRequest } from "../../utils/graphql";
@@ -13,11 +13,40 @@ import {
   X,
   Filter,
   Loader,
+  Video,
+  Shield,
 } from "lucide-react";
 import "./CandidateJobs.css";
 import "./CandidateHome.css";
 
 const PAGE_SIZE = 15;
+
+const JOBS_SEARCH_STORAGE_KEY = "recruitech_candidate_jobs_search_v1";
+
+function loadPersistedSearchState() {
+  if (typeof sessionStorage === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem(JOBS_SEARCH_STORAGE_KEY);
+    if (!raw) return null;
+    const p = JSON.parse(raw);
+    if (!p || typeof p !== "object") return null;
+    if (!Array.isArray(p.jobs)) p.jobs = [];
+    if (typeof p.total !== "number") p.total = p.jobs.length;
+    if (typeof p.offset !== "number") p.offset = p.jobs.length;
+    return p;
+  } catch {
+    return null;
+  }
+}
+
+function savePersistedSearchState(payload) {
+  if (typeof sessionStorage === "undefined") return;
+  try {
+    sessionStorage.setItem(JOBS_SEARCH_STORAGE_KEY, JSON.stringify(payload));
+  } catch {
+    /* quota / private mode */
+  }
+}
 
 const formatSalary = (min, max, currency = "USD") => {
   const fmt = (n) => {
@@ -54,6 +83,7 @@ const SEARCH_JOBS_QUERY = `
         skills
         company_name
         createdAt
+        sponsorship_available
       }
     }
   }
@@ -63,28 +93,45 @@ const CandidateJobs = () => {
   const { token } = useAuth();
   const navigate = useNavigate();
 
-  const [jobs, setJobs] = useState([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const initialPersisted = useMemo(() => loadPersistedSearchState(), []);
+
+  const [jobs, setJobs] = useState(() => initialPersisted?.jobs ?? []);
+  const [total, setTotal] = useState(() => initialPersisted?.total ?? 0);
+  const [loading, setLoading] = useState(
+    () => !(initialPersisted?.jobs && initialPersisted.jobs.length > 0)
+  );
   const [loadingMore, setLoadingMore] = useState(false);
 
   // UI-bound filter inputs
-  const [searchInput, setSearchInput] = useState("");
-  const [employmentType, setEmploymentType] = useState("");
-  const [experienceLevel, setExperienceLevel] = useState("");
-  const [locationType, setLocationType] = useState("");
+  const [searchInput, setSearchInput] = useState(
+    () => initialPersisted?.searchInput ?? ""
+  );
+  const [employmentType, setEmploymentType] = useState(
+    () => initialPersisted?.employmentType ?? ""
+  );
+  const [experienceLevel, setExperienceLevel] = useState(
+    () => initialPersisted?.experienceLevel ?? ""
+  );
+  const [locationType, setLocationType] = useState(
+    () => initialPersisted?.locationType ?? ""
+  );
 
   // The "committed" filters that actually trigger a fetch.
   // Bumping `version` forces a re-fetch even if filters haven't changed.
-  const [activeFilters, setActiveFilters] = useState({
-    search: "",
-    employment_type: "",
-    experience_level: "",
-    location_type: "",
-    version: 0,
-  });
+  const [activeFilters, setActiveFilters] = useState(
+    () =>
+      initialPersisted?.activeFilters ?? {
+        search: "",
+        employment_type: "",
+        experience_level: "",
+        location_type: "",
+        version: 0,
+      }
+  );
 
   const [appliedJobs, setAppliedJobs] = useState(new Set());
+  const [applicationMap, setApplicationMap] = useState({});
+  const [interviewByApplicationId, setInterviewByApplicationId] = useState({});
 
   const [showApplyModal, setShowApplyModal] = useState(false);
   const [applyingJob, setApplyingJob] = useState(null);
@@ -94,12 +141,62 @@ const CandidateJobs = () => {
   const [applyError, setApplyError] = useState(null);
   const [applySuccess, setApplySuccess] = useState(false);
 
-  const offsetRef = useRef(0);
+  const offsetRef = useRef(initialPersisted?.offset ?? 0);
+  const jobsRef = useRef(jobs);
+  jobsRef.current = jobs;
 
+  /** Hide applied roles unless this search hit includes an AI interview invite for that application. */
   const visibleJobs = useMemo(
-    () => jobs.filter((job) => !appliedJobs.has(job.id)),
-    [jobs, appliedJobs]
+    () =>
+      jobs.filter((job) => {
+        if (!appliedJobs.has(job.id)) return true;
+        const appId = applicationMap[job.id];
+        return !!(appId && interviewByApplicationId[appId]);
+      }),
+    [jobs, appliedJobs, applicationMap, interviewByApplicationId]
   );
+
+  const refreshAppliedAndInterviews = useCallback(async () => {
+    if (!token) return;
+    try {
+      const [appsData, ivData] = await Promise.all([
+        graphqlRequest(
+          `query { myApplications(limit: 200) { id job_id } }`,
+          {},
+          token
+        ),
+        graphqlRequest(
+          `query JobsSearchMyInterviews {
+            myInterviews {
+              id
+              application_id
+              interview_token
+              status
+              overall_score
+              results_released
+            }
+          }`,
+          {},
+          token
+        ),
+      ]);
+      const apps = appsData.myApplications || [];
+      setAppliedJobs(new Set(apps.map((a) => a.job_id)));
+      const amap = {};
+      apps.forEach((a) => {
+        amap[a.job_id] = a.id;
+      });
+      setApplicationMap(amap);
+      const list = ivData.myInterviews || [];
+      const imap = {};
+      list.forEach((iv) => {
+        imap[iv.application_id] = iv;
+      });
+      setInterviewByApplicationId(imap);
+    } catch {
+      /* profile may be missing */
+    }
+  }, [token]);
 
   // Commit current UI inputs into activeFilters (triggers the fetch effect)
   const commitFilters = () => {
@@ -118,7 +215,8 @@ const CandidateJobs = () => {
     let cancelled = false;
 
     const doFetch = async () => {
-      setLoading(true);
+      const showFullSpinner = jobsRef.current.length === 0;
+      if (showFullSpinner) setLoading(true);
       try {
         const filters = {};
         if (activeFilters.search) filters.search = activeFilters.search;
@@ -152,6 +250,21 @@ const CandidateJobs = () => {
         setJobs(resultJobs);
         setTotal(filters.search ? resultJobs.length : data.searchJobs.total);
         offsetRef.current = resultJobs.length;
+
+        if (!cancelled) {
+          savePersistedSearchState({
+            searchInput,
+            employmentType,
+            experienceLevel,
+            locationType,
+            activeFilters,
+            jobs: resultJobs,
+            total: filters.search ? resultJobs.length : data.searchJobs.total,
+            offset: resultJobs.length,
+          });
+        }
+
+        if (!cancelled) await refreshAppliedAndInterviews();
       } catch (err) {
         console.error("Error fetching jobs:", err);
       } finally {
@@ -161,32 +274,12 @@ const CandidateJobs = () => {
 
     doFetch();
     return () => { cancelled = true; };
-  }, [activeFilters, token]);
+  }, [activeFilters, token, refreshAppliedAndInterviews]);
 
-  // Fetch applied job IDs once on mount (used to hide those roles from this list)
   useEffect(() => {
     if (!token) return;
-    const fetchApplied = async () => {
-      try {
-        const data = await graphqlRequest(
-          `query { myApplications(limit: 200) { id job_id } }`,
-          {},
-          token
-        );
-        const apps = data.myApplications || [];
-        setAppliedJobs(new Set(apps.map((a) => a.job_id)));
-      } catch {
-        // Candidate may not have a profile yet
-      }
-    };
-    fetchApplied();
-  }, [token]);
-
-  // Initial fetch on mount
-  useEffect(() => {
-    commitFilters();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    refreshAppliedAndInterviews();
+  }, [token, refreshAppliedAndInterviews]);
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -242,8 +335,21 @@ const CandidateJobs = () => {
       );
 
       const newJobs = data.searchJobs.jobs || [];
-      setJobs((prev) => [...prev, ...newJobs]);
-      offsetRef.current += newJobs.length;
+      setJobs((prev) => {
+        const merged = [...prev, ...newJobs];
+        offsetRef.current = merged.length;
+        savePersistedSearchState({
+          searchInput,
+          employmentType,
+          experienceLevel,
+          locationType,
+          activeFilters,
+          jobs: merged,
+          total,
+          offset: merged.length,
+        });
+        return merged;
+      });
     } catch (err) {
       console.error("Error loading more jobs:", err);
     } finally {
@@ -286,6 +392,7 @@ const CandidateJobs = () => {
       );
 
       setAppliedJobs((prev) => new Set([...prev, applyingJob.id]));
+      await refreshAppliedAndInterviews();
       setApplySuccess(true);
     } catch (err) {
       setApplyError(err.message || "Failed to submit application");
@@ -402,6 +509,10 @@ const CandidateJobs = () => {
                 ? "Load more to see additional openings, or change your filters."
                 : "There are no other openings in this list right now. Try a new search or check back later."}
             </p>
+            <p style={{ fontSize: "0.9rem", color: "var(--text-secondary)", marginTop: "0.5rem", maxWidth: "32rem" }}>
+              Applied roles stay hidden unless you have an AI interview for that application—then they show
+              again whenever this search matches.
+            </p>
             {jobs.length < total && (
               <button
                 type="button"
@@ -429,6 +540,9 @@ const CandidateJobs = () => {
                   job.salary_max,
                   job.salary_currency
                 );
+                const isApplied = appliedJobs.has(job.id);
+                const appId = applicationMap[job.id];
+                const iv = appId ? interviewByApplicationId[appId] : null;
 
                 return (
                   <div className="job-search-card" key={job.id}>
@@ -470,6 +584,12 @@ const CandidateJobs = () => {
                           : job.location_type?.charAt(0).toUpperCase() +
                             job.location_type?.slice(1)}
                       </span>
+                      {job.sponsorship_available && (
+                        <span className="meta-item" title="Employer offers sponsorship">
+                          <Shield size={14} />
+                          Sponsorship
+                        </span>
+                      )}
                     </div>
 
                     <p className="card-desc">{job.description}</p>
@@ -490,13 +610,47 @@ const CandidateJobs = () => {
                         >
                           View Details
                         </button>
-                        <button
-                          className="btn btn-primary btn-sm"
-                          onClick={() => handleApplyClick(job)}
-                        >
-                          <Send size={14} />
-                          Apply Now
-                        </button>
+                        {!isApplied ? (
+                          <button
+                            className="btn btn-primary btn-sm"
+                            onClick={() => handleApplyClick(job)}
+                          >
+                            <Send size={14} />
+                            Apply Now
+                          </button>
+                        ) : (
+                          <>
+                            <span className="btn-applied">
+                              <CheckCircle size={16} />
+                              Applied
+                            </span>
+                            {iv?.status === "completed" && (
+                              <span
+                                className="btn-interview-done"
+                                title={
+                                  iv.results_released
+                                    ? `Score: ${iv.overall_score}`
+                                    : "Results pending"
+                                }
+                              >
+                                <CheckCircle size={14} />
+                                {iv.results_released
+                                  ? `Interviewed (${Math.round(iv.overall_score || 0)}/100)`
+                                  : "Interview complete"}
+                              </span>
+                            )}
+                            {(iv?.status === "scheduled" || iv?.status === "in_progress") && (
+                              <button
+                                type="button"
+                                className="btn btn-accent btn-sm"
+                                onClick={() => navigate(`/interview/${iv.interview_token}`)}
+                              >
+                                <Video size={14} />
+                                {iv.status === "in_progress" ? "Resume AI interview" : "Take AI interview"}
+                              </button>
+                            )}
+                          </>
+                        )}
                       </div>
                     </div>
                   </div>

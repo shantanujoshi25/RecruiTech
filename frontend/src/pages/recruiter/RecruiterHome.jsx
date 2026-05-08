@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { graphqlRequest } from "../../utils/graphql";
@@ -15,8 +15,12 @@ import {
 	ArrowRight,
 	CalendarDays,
 	MapPin,
+	Shield,
+	Search,
+	Filter,
 } from "lucide-react";
 import "../candidate/CandidateHome.css";
+import "../candidate/CandidateJobs.css";
 
 const formatDate = (isoString) => {
 	if (!isoString) return "";
@@ -62,6 +66,7 @@ const RecruiterHome = () => {
 		location_type: "onsite",
 		location: "",
 		deadline: "",
+		sponsorship_available: false,
 		salary_min: "",
 		salary_max: "",
 		salary_currency: "USD",
@@ -71,6 +76,65 @@ const RecruiterHome = () => {
 	const [jobSaving, setJobSaving] = useState(false);
 	const [jobError, setJobError] = useState(null);
 	const [totalApplicants, setTotalApplicants] = useState(0);
+
+	const [jobSearchInput, setJobSearchInput] = useState("");
+	const [jobSearchCommitted, setJobSearchCommitted] = useState("");
+	const [jobFilterEmployment, setJobFilterEmployment] = useState("");
+	const [jobFilterExperience, setJobFilterExperience] = useState("");
+	const [jobFilterLocationType, setJobFilterLocationType] = useState("");
+
+	const filteredJobs = useMemo(() => {
+		return jobs.filter((job) => {
+			if (jobFilterEmployment && job.employment_type !== jobFilterEmployment) {
+				return false;
+			}
+			if (jobFilterExperience && job.experience_level !== jobFilterExperience) {
+				return false;
+			}
+			if (jobFilterLocationType && job.location_type !== jobFilterLocationType) {
+				return false;
+			}
+			if (jobSearchCommitted) {
+				const tokens = jobSearchCommitted
+					.toLowerCase()
+					.split(/\s+/)
+					.filter(Boolean);
+				if (tokens.length > 0) {
+					const skillsStr = Array.isArray(job.skills)
+						? job.skills.join(" ")
+						: "";
+					const haystack = `${job.title || ""} ${job.description || ""} ${job.location || ""} ${skillsStr}`.toLowerCase();
+					if (!tokens.every((t) => haystack.includes(t))) return false;
+				}
+			}
+			return true;
+		});
+	}, [
+		jobs,
+		jobSearchCommitted,
+		jobFilterEmployment,
+		jobFilterExperience,
+		jobFilterLocationType,
+	]);
+
+	const handleRecruiterJobSearch = (e) => {
+		e.preventDefault();
+		setJobSearchCommitted(jobSearchInput.trim());
+	};
+
+	const handleClearJobSearch = () => {
+		setJobSearchInput("");
+		setJobSearchCommitted("");
+		setJobFilterEmployment("");
+		setJobFilterExperience("");
+		setJobFilterLocationType("");
+	};
+
+	const hasJobSearchFilters =
+		jobSearchCommitted ||
+		jobFilterEmployment ||
+		jobFilterExperience ||
+		jobFilterLocationType;
 
 	useEffect(() => {
 		if (!authLoading && (!user || user.role !== "recruiter")) {
@@ -106,6 +170,7 @@ const RecruiterHome = () => {
 							location_type
 							location
 							deadline
+							sponsorship_available
 							salary_min
 							salary_max
 							salary_currency
@@ -323,6 +388,7 @@ const RecruiterHome = () => {
 			location_type: "onsite",
 			location: "",
 			deadline: "",
+			sponsorship_available: false,
 			salary_min: "",
 			salary_max: "",
 			salary_currency: "USD",
@@ -388,6 +454,7 @@ const RecruiterHome = () => {
 					location_type: jobForm.location_type,
 					location: jobForm.location.trim(),
 					deadline: deadlineDate.toISOString(),
+					sponsorship_available: jobForm.sponsorship_available === true,
 					salary_min: Number.isFinite(salaryMin) ? salaryMin : null,
 					salary_max: Number.isFinite(salaryMax) ? salaryMax : null,
 					salary_currency: jobForm.salary_currency || null,
@@ -408,6 +475,7 @@ const RecruiterHome = () => {
 						location_type
 						location
 						deadline
+						sponsorship_available
 						salary_min
 						salary_max
 						salary_currency
@@ -494,6 +562,85 @@ const RecruiterHome = () => {
 				<div className="dashboard-content recruiter-dashboard-content">
 					<div className="dashboard-section recruiter-dashboard-section">
 						<h2>Active Job Postings</h2>
+
+						{jobs.length > 0 && (
+							<>
+						<div className="search-section" style={{ marginTop: "1rem" }}>
+							<form className="search-bar" onSubmit={handleRecruiterJobSearch}>
+								<div className="search-input-wrapper">
+									<Search size={18} />
+									<input
+										type="text"
+										className="input-field"
+										placeholder="Search your postings by title, description, location, or skills..."
+										value={jobSearchInput}
+										onChange={(e) => setJobSearchInput(e.target.value)}
+									/>
+								</div>
+								<button type="submit" className="btn btn-primary">
+									<Search size={18} />
+									Search
+								</button>
+							</form>
+
+							<div className="filters-row">
+								<Filter size={16} style={{ color: "var(--text-secondary)" }} />
+								<select
+									className="input-field"
+									value={jobFilterEmployment}
+									onChange={(e) => setJobFilterEmployment(e.target.value)}
+								>
+									<option value="">All Types</option>
+									<option value="full_time">Full-time</option>
+									<option value="part_time">Part-time</option>
+									<option value="contract">Contract</option>
+									<option value="internship">Internship</option>
+									<option value="freelance">Freelance</option>
+								</select>
+
+								<select
+									className="input-field"
+									value={jobFilterExperience}
+									onChange={(e) => setJobFilterExperience(e.target.value)}
+								>
+									<option value="">All Levels</option>
+									<option value="junior">Junior</option>
+									<option value="mid">Mid</option>
+									<option value="senior">Senior</option>
+									<option value="lead">Lead</option>
+								</select>
+
+								<select
+									className="input-field"
+									value={jobFilterLocationType}
+									onChange={(e) => setJobFilterLocationType(e.target.value)}
+								>
+									<option value="">All Locations</option>
+									<option value="remote">Remote</option>
+									<option value="onsite">Onsite</option>
+									<option value="hybrid">Hybrid</option>
+								</select>
+
+								{hasJobSearchFilters && (
+									<button
+										type="button"
+										className="clear-filters"
+										onClick={handleClearJobSearch}
+									>
+										<X size={14} /> Clear
+									</button>
+								)}
+							</div>
+						</div>
+
+						<div className="jobs-results-header" style={{ marginTop: "1.25rem", marginBottom: "1rem" }}>
+							<span className="results-count">
+								{`${filteredJobs.length} of ${jobs.length} posting${jobs.length !== 1 ? "s" : ""} shown`}
+							</span>
+						</div>
+							</>
+						)}
+
 						<div className="job-list">
 							{jobs.length === 0 ? (
 								<div className="job-card">
@@ -517,8 +664,31 @@ const RecruiterHome = () => {
 										</button>
 									</div>
 								</div>
+							) : filteredJobs.length === 0 ? (
+								<div className="job-card">
+									<div className="job-header">
+										<div className="job-icon">🔍</div>
+										<div>
+											<h3>No postings match your search</h3>
+											<p>
+												Try different keywords or clear filters to see all of your active
+												roles.
+											</p>
+										</div>
+									</div>
+									<div className="job-actions">
+										<button
+											type="button"
+											className="btn btn-outline btn-sm"
+											onClick={handleClearJobSearch}
+										>
+											<X size={16} />
+											Clear filters
+										</button>
+									</div>
+								</div>
 							) : (
-								jobs.map((job) => {
+								filteredJobs.map((job) => {
 									const deadlineDate = job.deadline ? new Date(job.deadline) : null;
 									const now = Date.now();
 									const deadlinePassed = deadlineDate ? deadlineDate.getTime() < now : false;
@@ -629,6 +799,10 @@ const RecruiterHome = () => {
 															<span style={{ display: "inline-flex", alignItems: "center", gap: "0.3rem" }}>
 																<MapPin size={12} />
 																{job.location_type === "remote" ? "Remote" : job.location}
+															</span>
+															<span style={{ display: "inline-flex", alignItems: "center", gap: "0.3rem" }}>
+																<Shield size={12} />
+																{job.sponsorship_available ? "Sponsorship available" : "No sponsorship"}
 															</span>
 														</div>
 													</div>
@@ -1062,6 +1236,64 @@ const RecruiterHome = () => {
 												>
 													Candidates can't apply after this date.
 												</p>
+											</div>
+											<div className="form-group">
+												<label>Sponsorship available *</label>
+												<p
+													style={{
+														fontSize: "0.75rem",
+														color: "var(--text-secondary)",
+														marginBottom: "0.5rem",
+													}}
+												>
+													Can this employer sponsor work visas or authorization for qualified candidates?
+												</p>
+												<div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
+													<label
+														style={{
+															display: "inline-flex",
+															alignItems: "center",
+															gap: "0.45rem",
+															cursor: "pointer",
+															fontSize: "0.9rem",
+														}}
+													>
+														<input
+															type="radio"
+															name="sponsorship_available"
+															checked={jobForm.sponsorship_available === true}
+															onChange={() =>
+																setJobForm({
+																	...jobForm,
+																	sponsorship_available: true,
+																})
+															}
+														/>
+														Yes
+													</label>
+													<label
+														style={{
+															display: "inline-flex",
+															alignItems: "center",
+															gap: "0.45rem",
+															cursor: "pointer",
+															fontSize: "0.9rem",
+														}}
+													>
+														<input
+															type="radio"
+															name="sponsorship_available"
+															checked={jobForm.sponsorship_available === false}
+															onChange={() =>
+																setJobForm({
+																	...jobForm,
+																	sponsorship_available: false,
+																})
+															}
+														/>
+														No
+													</label>
+												</div>
 											</div>
 										</div>
 									</div>

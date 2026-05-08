@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { graphqlRequest } from "../../utils/graphql";
@@ -20,9 +20,21 @@ import {
 	Building2,
 	Send,
 	Clock,
+	Video,
+	Shield,
+	Eye,
+	ExternalLink,
 } from "lucide-react";
 import RejectionFeedbackModal from "./RejectionFeedbackModal";
 import "./CandidateHome.css";
+
+/** Job listing is shown only if apply is still allowed (matches backend apply check). */
+const isJobDeadlineOpen = (job) => {
+	if (!job?.deadline) return true;
+	const t = new Date(job.deadline).getTime();
+	if (Number.isNaN(t)) return true;
+	return t >= Date.now();
+};
 
 const CandidateHome = () => {
 	const { user, loading: authLoading, token } = useAuth();
@@ -63,8 +75,10 @@ const CandidateHome = () => {
 	const [applicationCount, setApplicationCount] = useState(0);
 	const [recentApplications, setRecentApplications] = useState([]);
 	const [recentJobs, setRecentJobs] = useState([]);
+	const [myInterviews, setMyInterviews] = useState([]);
 	const [feedbackModal, setFeedbackModal] = useState({ open: false, data: null, jobTitle: "" });
 	const [feedbackLoading, setFeedbackLoading] = useState(false);
+	const [applicationDetailApp, setApplicationDetailApp] = useState(null);
 
 	useEffect(() => {
 		if (!authLoading && (!user || user.role !== "candidate")) {
@@ -109,7 +123,10 @@ const CandidateHome = () => {
 							id
 							job_id
 							status
+							cover_letter
+							resume_url
 							createdAt
+							updatedAt
 							job {
 								id
 								title
@@ -117,7 +134,7 @@ const CandidateHome = () => {
 								location
 							}
 						}
-						searchJobs(limit: 10) {
+						searchJobs(limit: 40) {
 							jobs {
 								id
 								title
@@ -127,7 +144,20 @@ const CandidateHome = () => {
 								location_type
 								employment_type
 								skills
+								deadline
+								sponsorship_available
 							}
+						}
+						myInterviews {
+							id
+							application_id
+							job_id
+							interview_token
+							status
+							job_title
+							overall_score
+							results_released
+							expires_at
 						}
 					}
 					`,
@@ -139,10 +169,14 @@ const CandidateHome = () => {
 				const apps = data.myApplications || [];
 				setRecentApplications(apps);
 				const appliedJobIds = new Set(apps.map((a) => a.job_id));
-				const latestOpenings = (data.searchJobs?.jobs || []).filter(
-					(job) => !appliedJobIds.has(job.id)
-				);
+				const latestOpenings = (data.searchJobs?.jobs || [])
+					.filter(
+						(job) =>
+							!appliedJobIds.has(job.id) && isJobDeadlineOpen(job)
+					)
+					.slice(0, 10);
 				setRecentJobs(latestOpenings);
+				setMyInterviews(data.myInterviews || []);
 				setLoading(false);
 			} catch (err) {
 				console.error("Fetch profile error:", err);
@@ -155,6 +189,14 @@ const CandidateHome = () => {
 			fetchProfile();
 		}
 	}, [user, authLoading, navigate, token]);
+
+	const interviewByApplicationId = useMemo(() => {
+		const m = {};
+		for (const iv of myInterviews) {
+			if (iv?.application_id) m[iv.application_id] = iv;
+		}
+		return m;
+	}, [myInterviews]);
 
 	if (authLoading || loading) {
 		return (
@@ -314,6 +356,9 @@ const CandidateHome = () => {
 		setShowEditModal(false);
 		setEditError(null);
 	};
+
+	const formatApplicationStatus = (s) =>
+		s ? s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) : "";
 
 	const handleViewFeedback = async (app) => {
 		if (!candidate?.id || !app.job?.id) return;
@@ -520,6 +565,12 @@ const CandidateHome = () => {
 											{Array.isArray(job.skills) && job.skills.slice(0, 3).map((skill) => (
 												<span className="tag" key={`${job.id}-${skill}`}>{skill}</span>
 											))}
+											{job.sponsorship_available && (
+												<span className="tag" title="Employer offers sponsorship">
+													<Shield size={12} style={{ verticalAlign: "middle", marginRight: "0.25rem" }} />
+													Sponsorship
+												</span>
+											)}
 										</div>
 										<button
 											className="btn btn-primary btn-sm"
@@ -547,7 +598,16 @@ const CandidateHome = () => {
 													<p>{app.job?.company_name || "Company"} &bull; {app.job?.location || ""}</p>
 												</div>
 											</div>
-											<div className="job-tags">
+											<div
+												className="job-tags"
+												style={{
+													display: "flex",
+													flexWrap: "wrap",
+													alignItems: "center",
+													gap: "0.5rem",
+													width: "100%",
+												}}
+											>
 												<span className="tag" style={{
 													background: app.status === "shortlisted"
 														? "rgba(16, 185, 129, 0.15)"
@@ -565,25 +625,92 @@ const CandidateHome = () => {
 												<span className="tag">
 													Applied {new Date(app.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
 												</span>
-												<button
-													className="btn btn-outline btn-sm"
-													style={{ marginLeft: "auto", gap: "0.4rem", fontSize: "0.8rem", padding: "0.3rem 0.75rem" }}
-													onClick={() => navigate(`/jobs/${app.job_id}`)}
-												>
-													<Search size={14} />
-													View Details
-												</button>
-												{app.status === "rejected" && (
-													<button
-														className="btn btn-outline btn-sm"
-														style={{ marginLeft: "0.5rem", gap: "0.4rem", fontSize: "0.8rem", padding: "0.3rem 0.75rem" }}
-														onClick={() => handleViewFeedback(app)}
-														disabled={feedbackLoading}
+												{(interviewByApplicationId[app.id] || app.status === "rejected") && (
+													<div
+														style={{
+															marginLeft: "auto",
+															display: "flex",
+															gap: "0.5rem",
+															alignItems: "center",
+															flexWrap: "wrap",
+														}}
 													>
-														<TrendingUp size={14} />
-														{feedbackLoading ? "Loading..." : "View Feedback"}
-													</button>
+														{(() => {
+															const iv = interviewByApplicationId[app.id];
+															if (!iv || iv.status === "cancelled" || iv.status === "expired")
+																return null;
+															if (iv.status === "scheduled" || iv.status === "in_progress") {
+																return (
+																	<button
+																		type="button"
+																		className="btn btn-primary btn-sm"
+																		style={{ gap: "0.35rem", fontSize: "0.8rem", padding: "0.35rem 0.85rem" }}
+																		onClick={() => navigate(`/interview/${iv.interview_token}`)}
+																	>
+																		<Video size={14} />
+																		{iv.status === "in_progress" ? "Resume AI interview" : "Take AI interview"}
+																	</button>
+																);
+															}
+															if (iv.status === "completed") {
+																return (
+																	<span
+																		className="tag"
+																		style={{
+																			background: "rgba(139, 92, 246, 0.15)",
+																			color: "#a78bfa",
+																			fontSize: "0.8rem",
+																		}}
+																		title={iv.results_released ? "Score released" : "Awaiting detailed results"}
+																	>
+																		AI interview complete
+																		{iv.results_released &&
+																			` (${Math.round(iv.overall_score ?? 0)}/100)`}
+																	</span>
+																);
+															}
+															return null;
+														})()}
+														{app.status === "rejected" && (
+															<button
+																className="btn btn-outline btn-sm"
+																style={{ gap: "0.4rem", fontSize: "0.8rem", padding: "0.3rem 0.75rem" }}
+																onClick={() => handleViewFeedback(app)}
+																disabled={feedbackLoading}
+															>
+																<TrendingUp size={14} />
+																{feedbackLoading ? "Loading..." : "View Feedback"}
+															</button>
+														)}
+													</div>
 												)}
+											</div>
+
+											<div
+												style={{
+													display: "flex",
+													flexWrap: "wrap",
+													alignItems: "center",
+													justifyContent: "flex-end",
+													gap: "0.75rem",
+													marginTop: "1rem",
+													paddingTop: "0.85rem",
+													borderTop: "1px solid var(--border)",
+												}}
+											>
+												<button
+													type="button"
+													className="btn btn-primary btn-sm"
+													style={{
+														gap: "0.3rem",
+														fontSize: "0.75rem",
+														padding: "0.28rem 0.65rem",
+													}}
+													onClick={() => setApplicationDetailApp(app)}
+												>
+													<Eye size={13} />
+													View details
+												</button>
 											</div>
 										</div>
 									))}
@@ -1189,6 +1316,172 @@ const CandidateHome = () => {
 										</button>
 									</div>
 								</form>
+							</div>
+						</div>
+					</div>
+				)}
+
+				{/* Application details (recent applications) */}
+				{applicationDetailApp && (
+					<div className="modal-overlay" onClick={() => setApplicationDetailApp(null)}>
+						<div
+							className="modal-content"
+							style={{ maxWidth: "32rem" }}
+							onClick={(e) => e.stopPropagation()}
+						>
+							<div className="modal-header">
+								<h2>Application details</h2>
+								<button
+									type="button"
+									className="modal-close"
+									onClick={() => setApplicationDetailApp(null)}
+									aria-label="Close"
+								>
+									<X size={24} />
+								</button>
+							</div>
+							<div className="modal-body">
+								<div style={{ marginBottom: "1.25rem" }}>
+									<h3 style={{ margin: "0 0 0.35rem", fontSize: "1.1rem", color: "var(--text-primary)" }}>
+										{applicationDetailApp.job?.title || "Role"}
+									</h3>
+									<p style={{ margin: 0, color: "var(--text-secondary)", fontSize: "0.9rem" }}>
+										{applicationDetailApp.job?.company_name || "Company"}
+										{applicationDetailApp.job?.location ? ` · ${applicationDetailApp.job.location}` : ""}
+									</p>
+								</div>
+
+								<dl
+									style={{
+										display: "grid",
+										gap: "0.65rem",
+										margin: 0,
+										fontSize: "0.9rem",
+									}}
+								>
+									<div style={{ display: "flex", justifyContent: "space-between", gap: "1rem" }}>
+										<dt style={{ color: "var(--text-secondary)", margin: 0 }}>Status</dt>
+										<dd style={{ margin: 0, fontWeight: 600 }}>
+											{formatApplicationStatus(applicationDetailApp.status)}
+										</dd>
+									</div>
+									<div style={{ display: "flex", justifyContent: "space-between", gap: "1rem" }}>
+										<dt style={{ color: "var(--text-secondary)", margin: 0 }}>Applied</dt>
+										<dd style={{ margin: 0 }}>
+											{new Date(applicationDetailApp.createdAt).toLocaleString(undefined, {
+												dateStyle: "medium",
+												timeStyle: "short",
+											})}
+										</dd>
+									</div>
+									{applicationDetailApp.updatedAt &&
+										applicationDetailApp.updatedAt !== applicationDetailApp.createdAt && (
+											<div style={{ display: "flex", justifyContent: "space-between", gap: "1rem" }}>
+												<dt style={{ color: "var(--text-secondary)", margin: 0 }}>Last updated</dt>
+												<dd style={{ margin: 0 }}>
+													{new Date(applicationDetailApp.updatedAt).toLocaleString(undefined, {
+														dateStyle: "medium",
+														timeStyle: "short",
+													})}
+												</dd>
+											</div>
+										)}
+								</dl>
+
+								{(() => {
+									const iv = interviewByApplicationId[applicationDetailApp.id];
+									if (!iv || iv.status === "cancelled" || iv.status === "expired") return null;
+									return (
+										<p
+											style={{
+												marginTop: "1rem",
+												padding: "0.75rem",
+												borderRadius: "0.5rem",
+												background: "rgba(139, 92, 246, 0.1)",
+												color: "var(--text-secondary)",
+												fontSize: "0.85rem",
+												lineHeight: 1.5,
+											}}
+										>
+											<strong style={{ color: "var(--text-primary)" }}>AI interview: </strong>
+											{iv.status === "completed"
+												? iv.results_released
+													? `Completed — score ${Math.round(iv.overall_score ?? 0)}/100`
+													: "Completed — results pending"
+												: iv.status === "in_progress"
+												? "In progress — you can resume from this dashboard."
+												: "Scheduled — use Take AI interview on the card when you are ready."}
+										</p>
+									);
+								})()}
+
+								{applicationDetailApp.cover_letter && (
+									<div style={{ marginTop: "1rem" }}>
+										<p style={{ margin: "0 0 0.35rem", fontSize: "0.75rem", fontWeight: 600, color: "var(--text-secondary)" }}>
+											Cover letter
+										</p>
+										<div
+											style={{
+												maxHeight: "9rem",
+												overflow: "auto",
+												padding: "0.75rem",
+												borderRadius: "0.5rem",
+												border: "1px solid var(--border)",
+												fontSize: "0.85rem",
+												lineHeight: 1.5,
+												color: "var(--text-primary)",
+												whiteSpace: "pre-wrap",
+											}}
+										>
+											{applicationDetailApp.cover_letter}
+										</div>
+									</div>
+								)}
+
+								{applicationDetailApp.resume_url && (
+									<div style={{ marginTop: "1rem" }}>
+										<p style={{ margin: "0 0 0.35rem", fontSize: "0.75rem", fontWeight: 600, color: "var(--text-secondary)" }}>
+											Resume
+										</p>
+										<a
+											href={applicationDetailApp.resume_url}
+											target="_blank"
+											rel="noopener noreferrer"
+											style={{
+												display: "inline-flex",
+												alignItems: "center",
+												gap: "0.35rem",
+												color: "var(--accent-cyan)",
+												fontSize: "0.9rem",
+												fontWeight: 600,
+											}}
+										>
+											<ExternalLink size={14} />
+											Open resume link
+										</a>
+									</div>
+								)}
+
+								<div className="modal-actions" style={{ marginTop: "1.5rem" }}>
+									<button
+										type="button"
+										className="btn btn-outline"
+										onClick={() => setApplicationDetailApp(null)}
+									>
+										Close
+									</button>
+									<button
+										type="button"
+										className="btn btn-primary"
+										onClick={() => {
+											const jid = applicationDetailApp.job_id || applicationDetailApp.job?.id;
+											setApplicationDetailApp(null);
+											if (jid) navigate(`/jobs/${jid}`);
+										}}
+									>
+										View full job posting
+									</button>
+								</div>
 							</div>
 						</div>
 					</div>
