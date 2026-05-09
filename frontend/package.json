@@ -6,11 +6,13 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "start": "serve -s dist -l ${PORT:-3000}",
     "lint": "eslint .",
     "preview": "vite preview"
   },
   "dependencies": {
     "@apollo/client": "^4.0.9",
+    "serve": "^14.2.4",
     "axios": "^1.13.2",
     "country-state-city": "^3.2.1",
     "graphql": "^16.12.0",
