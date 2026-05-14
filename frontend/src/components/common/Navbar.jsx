@@ -7,6 +7,10 @@ import {
 	computeUnseenApplicationCount,
 	ensureRecruiterNotifBaseline,
 } from "../../utils/recruiterApplicationNotifications";
+import {
+	computeUnseenCandidateApplicationCount,
+	ensureCandidateNotifBaseline,
+} from "../../utils/candidateApplicationNotifications";
 import "./Navbar.css";
 
 const dashboardPath = (role) =>
@@ -20,6 +24,7 @@ const Navbar = () => {
 	const navigate = useNavigate();
 	const { pathname } = useLocation();
 	const [recruiterApplicantBell, setRecruiterApplicantBell] = useState(0);
+	const [candidateApplicationBell, setCandidateApplicationBell] = useState(0);
 
 	const dashPath = user?.role ? dashboardPath(user.role) : "";
 	const onDashboard = Boolean(dashPath && pathname === dashPath);
@@ -48,11 +53,57 @@ const Navbar = () => {
 		} catch {
 			setRecruiterApplicantBell(0);
 		}
-	}, [token, user?.id, user?.role]);
+	}, [token, user]);
+
+	const refreshCandidateApplicationBell = useCallback(async () => {
+		if (!token || user?.role !== "candidate" || !user?.id) {
+			setCandidateApplicationBell(0);
+			return;
+		}
+		try {
+			const data = await graphqlRequest(
+				`
+				query NavbarCandidateApplications {
+					myApplications(limit: 200, offset: 0) {
+						id
+						status
+						createdAt
+						updatedAt
+					}
+					myInterviews {
+						application_id
+						status
+						results_released
+						overall_score
+						completed_at
+					}
+				}
+				`,
+				{},
+				token
+			);
+			const apps = data.myApplications || [];
+			const ivs = data.myInterviews || [];
+			ensureCandidateNotifBaseline(user.id, apps, ivs);
+			setCandidateApplicationBell(
+				computeUnseenCandidateApplicationCount(user.id, apps, ivs)
+			);
+		} catch {
+			setCandidateApplicationBell(0);
+		}
+	}, [token, user]);
 
 	useEffect(() => {
-		refreshRecruiterApplicantBell();
+		queueMicrotask(() => {
+			void refreshRecruiterApplicantBell();
+		});
 	}, [refreshRecruiterApplicantBell, pathname]);
+
+	useEffect(() => {
+		queueMicrotask(() => {
+			void refreshCandidateApplicationBell();
+		});
+	}, [refreshCandidateApplicationBell, pathname]);
 
 	useEffect(() => {
 		if (user?.role !== "recruiter" || !token) return;
@@ -68,6 +119,20 @@ const Navbar = () => {
 		};
 	}, [user?.role, token, refreshRecruiterApplicantBell]);
 
+	useEffect(() => {
+		if (user?.role !== "candidate" || !token) return;
+		const id = window.setInterval(refreshCandidateApplicationBell, 60_000);
+		const onFocus = () => refreshCandidateApplicationBell();
+		const onSeen = () => refreshCandidateApplicationBell();
+		window.addEventListener("focus", onFocus);
+		window.addEventListener("candidate-notifications-seen", onSeen);
+		return () => {
+			window.clearInterval(id);
+			window.removeEventListener("focus", onFocus);
+			window.removeEventListener("candidate-notifications-seen", onSeen);
+		};
+	}, [user?.role, token, refreshCandidateApplicationBell]);
+
 	const handleLogout = () => {
 		logout();
 	};
@@ -78,6 +143,10 @@ const Navbar = () => {
 
 	const handleRecruiterApplicantBell = () => {
 		navigate("/recruiter/notifications");
+	};
+
+	const handleCandidateApplicationBell = () => {
+		navigate("/candidate/notifications");
 	};
 
 	return (
@@ -140,6 +209,34 @@ const Navbar = () => {
 											{recruiterApplicantBell > 99
 												? "99+"
 												: recruiterApplicantBell}
+										</span>
+									) : null}
+								</button>
+							)}
+							{user?.role === "candidate" && (
+								<button
+									type="button"
+									className="navbar-notifications-btn"
+									onClick={handleCandidateApplicationBell}
+									aria-label={
+										candidateApplicationBell > 0
+											? `${candidateApplicationBell} application update${
+													candidateApplicationBell === 1 ? "" : "s"
+											  }. Open notifications.`
+											: "Application updates"
+									}
+									title={
+										candidateApplicationBell > 0
+											? `Application updates: ${candidateApplicationBell} — open list`
+											: "Application updates"
+									}
+								>
+									<Bell size={22} strokeWidth={2} aria-hidden />
+									{candidateApplicationBell > 0 ? (
+										<span className="navbar-notifications-badge">
+											{candidateApplicationBell > 99
+												? "99+"
+												: candidateApplicationBell}
 										</span>
 									) : null}
 								</button>

@@ -7,6 +7,7 @@ import Signup from "./pages/common/Signup";
 import OAuthComplete from "./pages/common/OAuthComplete";
 import CandidateOnboarding from "./pages/candidate/CandidateOnboarding";
 import CandidateHome from "./pages/candidate/CandidateHome";
+import CandidateNotifications from "./pages/candidate/CandidateNotifications";
 import CandidateJobs from "./pages/candidate/CandidateJobs";
 import InterviewRoom from "./pages/candidate/InterviewRoom";
 import RecruiterOnboarding from "./pages/recruiter/RecruiterOnboarding";
@@ -70,6 +71,14 @@ function App() {
 					element={
 						<ProtectedRoute allowedRoles={["candidate"]}>
 							<CandidateHome />
+						</ProtectedRoute>
+					}
+				/>
+				<Route
+					path="/candidate/notifications"
+					element={
+						<ProtectedRoute allowedRoles={["candidate"]}>
+							<CandidateNotifications />
 						</ProtectedRoute>
 					}
 				/>
