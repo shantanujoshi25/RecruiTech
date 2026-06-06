@@ -1,432 +1,316 @@
 # RecruiTech - AI-Powered Recruitment Platform
 
-RecruiTech is a modern, full-stack recruitment platform that revolutionizes hiring with intelligent matching, automated screening, and seamless candidate experiences.
+RecruiTech is an end-to-end technical recruiting platform that brings job posting, candidate evaluation, and live AI-led interviews into a single cohesive workflow. The platform automates candidate screening through CrewAI agents orchestrated by Apache Airflow and Kafka, enriching profiles from resumes, GitHub, and LeetCode without manual effort. gRPC handles typed communication between the backend and interview service, and GraphQL serves as the primary API contract. Live AI interviews run over WebSockets and WebRTC, with real-time Whisper transcription and GPT-4o scoring.
 
 ![RecruiTech](https://img.shields.io/badge/RecruiTech-v1.0.0-blue)
 ![Node](https://img.shields.io/badge/Node.js-v20+-green)
-![React](https://img.shields.io/badge/React-v18+-blue)
+![React](https://img.shields.io/badge/React-v19+-blue)
 ![MongoDB](https://img.shields.io/badge/MongoDB-v8+-green)
 
-## ✨ Features
+## Features
 
-### For Candidates ✅ Implemented
+### For Candidates
 
-- 🚀 **Quick Signup** - Register with email/password or Google OAuth
-- 📝 **Profile Management** - Comprehensive profile with resume, GitHub, LeetCode, and portfolio links
-- ✏️ **Edit Profile** - Update personal info, URLs, and job search status anytime
-- 📊 **Dashboard** - View profile status and recommended jobs
-- 🎯 **Status Management** - Set job search status (actively/casually looking, not looking)
+- Quick signup with email/password or Google OAuth
+- Profile management with resume upload (S3), GitHub, LeetCode, and portfolio links
+- Browse and apply to job postings with cover letter
+- Take live AI video interviews with real-time transcription
+- View interview results and rejection feedback (when released by recruiter)
+- Track application status across all applied jobs
 
-### For Recruiters ✅ Implemented
+### For Recruiters
 
-- 💼 **Company Management** - Create or join verified companies
-- ✏️ **Edit Profiles** - Update personal profile and company information
-- 📈 **Dashboard** - View active job postings and hiring metrics
-- 🔍 **Company Search** - Find and join existing companies with real-time search
-- ⚡ **Quick Actions** - Easy access to profile editing and candidate search
-
-### Coming Soon 🚧
-
-- 📢 **Job Posting** - Post jobs with detailed requirements
-- 👥 **Candidate Search** - Find the perfect candidates with AI assistance
-- 🎯 **Job Matching** - AI-powered job recommendations based on skills
-- 📊 **Application Tracking** - Track all applications in one place
-- 🎥 **Video Screening** - Complete video interviews at your convenience
+- Company creation and management with domain verification
+- Post jobs with detailed requirements, skills, salary, and experience level
+- View AI-generated evaluation reports (radar charts, dimension scores, strength/concern tags)
+- Send AI interviews to shortlisted candidates via gRPC
+- Watch interview recordings and review per-question scores
+- Release interview results to candidates
+- Shortlist, reject, or hire candidates with automated email notifications
 
 ### Authentication
 
-- 🔐 **Secure Login** - Email/password authentication with JWT
-- 🌐 **Google OAuth** - One-click signup with Google
-- 👤 **Role-Based Access** - Separate flows for candidates and recruiters
-- 🔒 **Protected Routes** - Secure access to user-specific content
+- Email/password authentication with bcrypt + JWT
+- Google OAuth 2.0 one-click signup
+- Role-based access control (candidate / recruiter)
+- Protected routes with role-specific redirects
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 ### Frontend
-
-- **React 18** - Modern UI library
-- **Vite** - Lightning-fast build tool
-- **React Router** - Client-side routing
-- **Axios** - HTTP client for API calls
-- **Lucide React** - Beautiful icons
-- **Custom GraphQL utility** - GraphQL client using Axios
+- **React 19** with Vite 7
+- **React Router 7** for client-side routing
+- **Apollo Client 4** for GraphQL
+- **Socket.IO Client** for real-time interview communication
+- **recharts** for radar charts and score visualizations
+- **Lucide React** for icons
+- Custom CSS with dark theme
 
 ### Backend
+- **Node.js 20** with Express 4
+- **Apollo Server 3** (GraphQL API)
+- **Mongoose 8** (MongoDB ODM)
+- **Passport.js** with Google OAuth 2.0 strategy
+- **JWT** for token-based authentication
+- **KafkaJS** for event publishing
+- **@grpc/grpc-js** for interview service communication
+- **AWS SDK** for S3 resume uploads
+- **Helmet** for security headers, **CORS** for origin control
 
-- **Node.js** - JavaScript runtime
-- **Express** - Web framework
-- **Apollo Server** - GraphQL server
-- **MongoDB** - NoSQL database
-- **Mongoose** - ODM for MongoDB
-- **Passport.js** - Authentication middleware
-- **JWT** - JSON Web Tokens for auth
-- **bcrypt** - Password hashing
+### Interview Service
+- **Express** with **Socket.IO 4** (WebSocket server)
+- **werift** for server-side WebRTC peer connections
+- **OpenAI GPT-4o** for question generation and answer scoring
+- **OpenAI Whisper** (`whisper-1`) for real-time audio transcription
+- **gRPC server** for backend-initiated interview creation
+- **Multer** for recording file uploads
 
-## 📁 Project Structure
+### AI Evaluation Pipeline
+- **Apache Airflow 2.10** with LocalExecutor
+- **CrewAI 1.9.3** for multi-agent orchestration
+- **OpenAI GPT-4o-mini** for agent LLM calls
+- **boto3** for S3 resume loading
+- **pypdf** for PDF parsing
+- **pymongo** for direct MongoDB writes
+- **kafka-python-ng** for Kafka messaging
+- **google-api-python-client** for Gmail API (OAuth 2.0)
+
+### Infrastructure
+- **Apache Kafka 3.7** (KRaft mode) as event bus
+- **MongoDB** as primary data store
+- **PostgreSQL** for Airflow metadata
+- **AWS S3** for resume storage
+- **Docker** and **Docker Compose** for local orchestration
+- **Railway** for cloud deployment
+
+## Project Structure
 
 ```
 RecruiTech/
 ├── backend/
 │   ├── src/
-│   │   ├── config/
-│   │   │   ├── database.js
-│   │   │   └── passport.js
+│   │   ├── config/          # database.js, passport.js
 │   │   ├── features/
-│   │   │   ├── user/
-│   │   │   ├── candidate/
-│   │   │   ├── recruiter/
-│   │   │   ├── company/
-│   │   │   └── job/
-│   │   ├── middleware/
-│   │   │   └── auth.js
-│   │   ├── models/
-│   │   │   ├── user.schema.js
-│   │   │   ├── candidate.schema.js
-│   │   │   ├── recruiter.schema.js
-│   │   │   └── company.schema.js
-│   │   ├── routes/
-│   │   │   └── auth.routes.js
-│   │   ├── utils/
-│   │   └── index.js
-│   ├── package.json
-│   └── README.md
+│   │   │   ├── user/        # auth, registration, user management
+│   │   │   ├── candidate/   # candidate profiles
+│   │   │   ├── recruiter/   # recruiter profiles
+│   │   │   ├── company/     # company management
+│   │   │   ├── job/         # job posting and search
+│   │   │   ├── application/ # job applications and status tracking
+│   │   │   ├── evaluation/  # AI evaluation reports (read from Airflow)
+│   │   │   ├── interview/   # interview management via gRPC
+│   │   │   └── feedback/    # rejection feedback queries
+│   │   ├── models/          # Mongoose schemas (7 collections)
+│   │   ├── routes/          # auth.routes.js, upload.routes.js
+│   │   ├── utils/           # kafkaProducer.js, commNotificationProducer.js, jwt.js
+│   │   ├── clients/         # interviewControlGrpc.js
+│   │   └── index.js         # Express + Apollo server entry point
+│   ├── proto/               # interview_control.proto
+│   ├── Dockerfile
+│   └── package.json
 │
 ├── frontend/
 │   ├── src/
-│   │   ├── components/
-│   │   │   ├── common/
-│   │   │   ├── auth/
-│   │   │   ├── candidate/
-│   │   │   └── recruiter/
 │   │   ├── pages/
-│   │   │   ├── common/
-│   │   │   ├── candidate/
-│   │   │   └── recruiter/
-│   │   ├── context/
-│   │   │   └── AuthContext.jsx
-│   │   ├── utils/
-│   │   │   └── graphql.js
-│   │   ├── App.jsx
-│   │   ├── main.jsx
-│   │   └── index.css
-│   ├── package.json
-│   └── index.html
+│   │   │   ├── common/      # Landing, Login, Signup, JobDetails
+│   │   │   ├── candidate/   # Home, Onboarding, Jobs, InterviewRoom
+│   │   │   └── recruiter/   # Home, Onboarding, JobApplicants, AIAnalysisReport
+│   │   ├── context/         # AuthContext.jsx
+│   │   ├── utils/           # graphql.js
+│   │   ├── App.jsx          # Route definitions
+│   │   └── main.jsx
+│   ├── Dockerfile
+│   └── package.json
 │
+├── interview-service/
+│   ├── src/
+│   │   ├── grpc/            # gRPC server (CreateInterviewSession, GetInterviewStatus, SubmitAnswerForScoring)
+│   │   ├── socket/          # interviewHandler.js, webrtcHandler.js
+│   │   ├── services/        # aiService.js, transcriptionService.js, interviewSessionActions.js
+│   │   ├── routes/          # interview.routes.js (recording upload, interview queries)
+│   │   ├── constants/       # interviewLimits.js
+│   │   └── index.js         # Express + Socket.IO entry point
+│   ├── recordings/          # Local recording storage
+│   ├── proto/               # interview_control.proto
+│   ├── Dockerfile
+│   └── package.json
+│
+├── airflow/
+│   ├── dags/
+│   │   ├── candidate_evaluation_dag.py   # 6-task evaluation pipeline
+│   │   ├── comm_notification_dag.py      # Email notifications
+│   │   ├── rejection_feedback_dag.py     # AI-generated rejection feedback
+│   │   ├── agents/
+│   │   │   ├── github_agent.py           # GitHub profile analyzer (CrewAI)
+│   │   │   ├── leetcode_agent.py         # LeetCode stats analyzer (CrewAI)
+│   │   │   ├── ats_scorer_agent.py       # Resume vs JD scorer (OpenAI direct)
+│   │   │   ├── consolidation_agent.py    # Weighted merge + synthesis (CrewAI)
+│   │   │   └── feedback_agent.py         # Rejection feedback generator (CrewAI)
+│   │   ├── tools/
+│   │   │   ├── github_graphql_tool.py    # GitHub GraphQL API client
+│   │   │   └── leetcode_graphql_tool.py  # LeetCode GraphQL API client
+│   │   └── utils/
+│   │       ├── scorer.py                 # ATS scoring prompt + parsing
+│   │       ├── schemas.py                # Pydantic models (AgentResult, ConsolidatedReport)
+│   │       ├── s3_resume_loader.py       # S3 PDF download + text extraction
+│   │       ├── gmail_sender.py           # Gmail API sender (OAuth 2.0)
+│   │       ├── email_templates.py        # HTML email templates
+│   │       └── config.py                 # Environment variable loading
+│   ├── Dockerfile
+│   ├── docker-compose.yaml
+│   └── requirements.txt
+│
+├── kafka/
+│   ├── docker-compose.yaml               # Kafka + Kafka UI + kafka-trigger
+│   ├── kafka_trigger.py                   # Kafka consumer → Airflow DAG trigger
+│   ├── Dockerfile.trigger
+│   └── requirements.txt
+│
+├── README.md
 ├── QUICKSTART.md
-└── README.md
+├── RAILWAY_DEPLOYMENT.md
+├── package.json              # Root workspace (concurrently)
+└── start.sh                  # Automated startup script
 ```
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 
 - Node.js (v20+)
 - MongoDB (v8+)
 - Docker & Docker Compose
-- npm or yarn
+- npm
 
-### Quick Start (Recommended)
-
-**Use the automated startup script:**
+### Quick Start
 
 ```bash
-# First time setup - copy .env.example files
+# Copy environment files
 cp backend/.env.example backend/.env
 cp frontend/.env.example frontend/.env
 cp interview-service/.env.example interview-service/.env
 cp airflow/.env.example airflow/.env
 
-# Edit the .env files with your credentials (OpenAI API key, Gmail credentials, etc.)
+# Edit .env files with your credentials (OpenAI API key, Gmail credentials, etc.)
 
 # Install dependencies
 cd backend && npm install && cd ..
 cd frontend && npm install && cd ..
 cd interview-service && npm install && cd ..
 
-# Start all services (Kafka, Backend, Interview Service, Frontend, Airflow)
+# Start all services
 ./start.sh
 
 # To stop all services
 ./start.sh --stop
 ```
 
-The script will:
-- Validate all environment variables
-- Start Kafka (Docker)
-- Start Backend on port 4000
-- Start Interview Service on port 5001
-- Start Frontend on port 5173
-- Start Airflow (Docker) on port 8080
-- Create logs directory automatically
-- Display all service URLs
+The script starts:
+- Kafka (Docker) on port 9092
+- Backend on port 4000
+- Interview Service on port 5001
+- Frontend on port 5173
+- Airflow (Docker) on port 8080
 
 ### Manual Installation
 
-1. **Clone the repository**
+See [QUICKSTART.md](QUICKSTART.md) for step-by-step manual setup instructions.
 
-    ```bash
-    git clone https://github.com/yourusername/recruitech.git
-    cd RecruiTech
-    ```
+### Access Points
 
-2. **Setup Backend**
+| Service | URL |
+|---------|-----|
+| Frontend | http://localhost:5173 |
+| Backend GraphQL | http://localhost:4000/graphql |
+| Interview Service | http://localhost:5001 |
+| Airflow UI | http://localhost:8080 (airflow/airflow) |
+| Kafka UI | http://localhost:8081 |
 
-    ```bash
-    cd backend
-    npm install
-    ```
+## Database Schema
 
-3. **Configure Backend Environment**
-   Create a `.env` file in the `backend` directory:
+### MongoDB Collections
 
-```env
-PORT=4000
-NODE_ENV=development
-JWT_SECRET=my-super-secret-jwt-key-for-development
-FRONTEND_URL=http://localhost:5173
-SESSION_SECRET=my-session-secret-for-development
-MONGODB_URL=mongodb://localhost:27017/recruitech
+| Collection | Purpose |
+|------------|---------|
+| `users` | Auth accounts (email, password_hash, google_id, role, is_admin) |
+| `candidates` | Candidate profiles (name, resume_url, github_url, leetcode_url, skills, work_experiences, educations) |
+| `recruiters` | Recruiter profiles (name, company_id, verification_status) |
+| `companies` | Employer companies (name, domain, is_verified) |
+| `jobs` | Job postings (title, description, skills, salary, employment_type, experience_level, deadline) |
+| `applications` | Job applications (job_id, candidate_id, status: pending/reviewed/shortlisted/rejected/hired) |
+| `interviews` | AI interview sessions (questions, scores, recording_url, overall_score, status) |
+| `evaluations` | Agent evaluation reports (written by Airflow, read by backend) |
+| `candidate_feedback` | Rejection feedback (generated by feedback agent) |
 
-# OAuth is optional - leave these empty for now
-GOOGLE_CLIENT_ID=
-GOOGLE_CLIENT_SECRET=
-GOOGLE_CALLBACK_URL=http://localhost:4000/auth/google/callback
-```
+## API Surface
 
-4. **Setup Frontend**
+### GraphQL (Apollo Server at `/graphql`)
 
-    ```bash
-    cd ../frontend
-    npm install
-    ```
+**Queries:** `me`, `user`, `users`, `candidate`, `myCandidateProfile`, `candidates`, `recruiter`, `myRecruiterProfile`, `recruiters`, `company`, `companies`, `jobs`, `searchJobs`, `job`, `myJobPosts`, `myApplications`, `applicationsForJob`, `applicationCountForJob`, `myApplicationCount`, `hasApplied`, `evaluation`, `evaluationScores`, `myInterviews`, `interviewForApplication`, `rejectionFeedback`
 
-5. **Configure Frontend Environment**
-   Create a `.env` file in the `frontend` directory:
-
-    ```env
-    VITE_API_URL=http://localhost:4000
-    VITE_GRAPHQL_URL=http://localhost:4000/graphql
-    ```
-
-6. **Start MongoDB**
-
-    ```bash
-    # Using Homebrew (macOS)
-    brew services start mongodb-community
-
-    # Or run directly
-    mongod --dbpath /path/to/data/directory
-    ```
-
-7. **Run the Application**
-
-    Terminal 1 (Backend):
-
-    ```bash
-    cd backend
-    npm run dev
-    ```
-
-    Terminal 2 (Frontend):
-
-    ```bash
-    cd frontend
-    npm run dev
-    ```
-
-8. **Access the Application**
-    - Frontend: http://localhost:5173
-    - Backend API: http://localhost:4000
-    - GraphQL Playground: http://localhost:4000/graphql
-
-## 🔐 Google OAuth Setup
-
-To enable Google OAuth authentication:
-
-### Quick Steps:
-
-1. **Create Google Cloud Project**
-    - Go to [Google Cloud Console](https://console.cloud.google.com/)
-    - Create a new project named "RecruiTech"
-
-2. **Configure OAuth Consent Screen**
-    - Go to "APIs & Services" → "OAuth consent screen"
-    - Select "External" user type
-    - Fill in app name, support email, and developer contact
-    - Add scopes: `userinfo.email` and `userinfo.profile`
-    - Add test users (your email) for development
-
-3. **Create OAuth Credentials**
-    - Go to "APIs & Services" → "Credentials"
-    - Create "OAuth client ID" → "Web application"
-    - Add Authorized JavaScript origins: `http://localhost:5173`
-    - Add Authorized redirect URIs: `http://localhost:4000/auth/google/callback`
-    - Copy Client ID and Client Secret
-
-4. **Update Backend `.env`**
-
-    ```env
-    GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
-    GOOGLE_CLIENT_SECRET=your-client-secret
-    ```
-
-5. **Restart Backend Server**
-    - OAuth will be automatically enabled
-    - Look for "✅ Google OAuth configured" in logs
-
-## 📖 User Flows
-
-### Candidate Flow
-
-1. **Signup**
-    - Choose "Candidate" role
-    - Enter email/password or use Google OAuth
-    - Complete profile with:
-        - Personal information
-        - Resume URL (Google Drive, Dropbox, etc.)
-        - GitHub profile (optional)
-        - LeetCode profile (optional)
-        - Portfolio website (optional)
-        - Profile summary
-        - Job search status
-
-2. **Login**
-    - Enter email/password or use Google OAuth
-    - Redirected to candidate dashboard
-
-3. **Dashboard**
-    - View job recommendations
-    - Track applications
-    - See profile analytics
-    - Manage profile settings
-
-### Recruiter Flow
-
-1. **Signup**
-    - Choose "Recruiter" role
-    - Enter email/password or use Google OAuth
-    - Select or create company:
-        - Search verified companies
-        - Or create new company with domain
-    - Complete profile with:
-        - Personal information
-        - Company affiliation
-
-2. **Login**
-    - Enter email/password or use Google OAuth
-    - Redirected to recruiter dashboard
-
-3. **Dashboard**
-    - View active job postings
-    - Manage applicants
-    - Post new jobs
-    - View hiring analytics
-
-## 🎨 Design Theme
-
-The application features a modern dark theme with:
-
-- **Primary Colors**: Dark blue (#0f1c2e, #1a2c42)
-- **Accent Color**: Cyan (#22d3ee)
-- **Background**: Deep dark (#0a1525)
-- **Typography**: Inter font family
-- **UI Elements**: Smooth animations, rounded corners, subtle shadows
-
-## 🔒 Security Features
-
-- **Password Hashing**: bcrypt with salt rounds
-- **JWT Authentication**: Secure token-based auth
-- **OAuth 2.0**: Industry-standard OAuth flow
-- **Protected Routes**: Role-based access control
-- **Input Validation**: Server-side validation for all inputs
-- **CORS**: Configured for specific origins
-- **Rate Limiting**: API request throttling
-- **Helmet**: Security headers for Express
-
-## 📊 Database Schema
-
-### User
-
-- email, password, google_id, role, profile_pic, is_admin, metadata
-
-### Candidate
-
-- user_id, first_name, last_name, email, phone_number
-- resume_url, github_url, leetcode_url, portfolio_url
-- profile_summary, status (actively_looking, casually_looking, not_looking)
-
-### Recruiter
-
-- user_id, first_name, last_name, email, phone_number
-- company_id, verification_status
-
-### Company
-
-- created_by, name, domain, is_verified
-
-## 🧪 API Endpoints
+**Mutations:** `register`, `login`, `updateUserRole`, `deleteUser`, `createCandidate`, `updateCandidate`, `deleteCandidate`, `createRecruiter`, `updateRecruiter`, `deleteRecruiter`, `updateRecruiterVerification`, `createCompany`, `updateCompany`, `deleteCompany`, `createJob`, `applyToJob`, `updateApplicationStatus`, `withdrawApplication`, `triggerEvaluation`, `sendAiInterview`, `releaseInterviewResults`
 
 ### REST Endpoints
 
-- `GET /health` - Health check
-- `GET /auth/google` - Initiate Google OAuth
-- `GET /auth/google/callback` - OAuth callback
-- `POST /auth/google/register` - Complete OAuth registration
+| Method | Path | Service |
+|--------|------|---------|
+| GET | `/health` | Backend |
+| GET | `/auth/google` | Backend |
+| GET | `/auth/google/callback` | Backend |
+| POST | `/auth/google/register` | Backend |
+| POST | `/upload` | Backend (S3) |
+| POST | `/api/interviews/create` | Interview Service |
+| GET | `/api/interviews/recordings/:filename` | Interview Service |
+| GET | `/api/interviews/token/:token` | Interview Service |
+| GET | `/api/interviews/application/:appId` | Interview Service |
+| GET | `/api/interviews/my-interviews` | Interview Service |
 
-### GraphQL Queries & Mutations
+### gRPC (`interview_control.proto`)
 
-See the GraphQL Playground at http://localhost:4000/graphql for full schema documentation.
+| RPC | Direction |
+|-----|-----------|
+| `CreateInterviewSession` | Backend → Interview Service |
+| `GetInterviewStatus` | Backend → Interview Service |
+| `SubmitAnswerForScoring` | Backend → Interview Service |
 
-## 🛣️ Roadmap
+### Kafka Topics
 
-- [x] User authentication (Email/Password + Google OAuth)
-- [x] Role-based signup and login flows
-- [x] Candidate profile management
-- [x] Recruiter profile management
-- [x] Company creation and selection
-- [x] Profile editing for candidates and recruiters
-- [ ] Job posting and search functionality
-- [ ] AI-powered candidate matching
-- [ ] Application tracking system
-- [ ] Video screening integration
-- [ ] Real-time messaging between candidates and recruiters
-- [ ] Advanced analytics dashboard
-- [ ] Email notifications
-- [ ] Mobile app (React Native)
-- [ ] Multiple OAuth providers (LinkedIn, GitHub)
+| Topic | Producer | Consumer |
+|-------|----------|----------|
+| `candidate-evaluation-request` | Backend | kafka-trigger → Airflow |
+| `comm-notification` | Backend | kafka-trigger → Airflow |
+| `evaluation-complete` | Airflow | Backend |
+| `rejection-feedback` | Airflow | kafka-trigger → Airflow |
 
-## 🤝 Contributing
+## Google OAuth Setup
 
-Contributions are welcome! Please follow these steps:
+1. Create project in [Google Cloud Console](https://console.cloud.google.com/)
+2. Configure OAuth consent screen (External, add `userinfo.email` and `userinfo.profile` scopes)
+3. Create OAuth client ID (Web application)
+   - Authorized JavaScript origins: `http://localhost:5173`
+   - Authorized redirect URIs: `http://localhost:4000/auth/google/callback`
+4. Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in `backend/.env`
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+## Deployment
 
-## 📝 License
+See [RAILWAY_DEPLOYMENT.md](RAILWAY_DEPLOYMENT.md) for full Railway deployment guide.
+
+All 8 services deploy to Railway from a single GitHub repo using root directory settings. Railway auto-deploys on push to main.
+
+## Security
+
+- Password hashing with bcrypt
+- JWT token-based authentication
+- Google OAuth 2.0
+- Role-based access control
+- Helmet security headers
+- CORS configured for specific origins
+- Input validation on all GraphQL resolvers
+
+## Authors
+
+- **RecruiTech Team**
+
+## License
 
 This project is licensed under the MIT License.
-
-## 👥 Authors
-
-- **Your Name** - Initial work
-
-## 🙏 Acknowledgments
-
-- Icons by [Lucide](https://lucide.dev/)
-- Design inspiration from modern recruitment platforms
-- Built with ❤️ using React and Node.js
-
-## 📧 Support
-
-For support, email support@recruitech.com or open an issue in the repository.
-
-## Project summary
-
-RecruiTech is an end-to-end technical recruiting platform that brings job posting, candidate review, and live AI-led interviews into a single cohesive workflow, eliminating the context switching that comes with fragmented hiring tools. The platform automates candidate evaluation through CrewAI agents orchestrated by Apache Airflow and Kafka, enriching profiles from resumes, job descriptions, and public engineer signals without any manual effort. It uses Elasticsearch to power full-text search across jobs and talent, gRPC handles fast typed communication between the core platform and the backend services, and GraphQL serves as the primary API contract for all data flowing in and out of the application. Live AI interviews run over WebSockets for real-time signaling and WebRTC for camera and audio, giving candidates a responsive room while the AI stack follows and processes their answers as they happen.
-
----
-
-Made with ❤️ by RecruiTech Team
